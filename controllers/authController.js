@@ -13,18 +13,29 @@ const signToken = id => {
   });
 };
 
-const createSendToken = (user,statusCode, res)=>{
-    const token = signToken(user._id);
+const createSendToken = (user, statusCode, res) => {
+  const token = signToken(user._id);
+  const cookieOptions = {
+    expires: new Date(
+      Date.now() + process.env.JWT_COOKIE_EXPIRES_IN * 24 * 60 * 60 * 1000
+    ),
+    httpOnly: true
+  };
 
-    res.status(statusCode).json({
-        status: 'success',
-        token,
-        data: {
-            user
-        }
-    })
+  if (process.env.NODE_ENV === 'production') cookieOptions.secure = true;
+  res.cookie('jwt', token, cookieOptions);
 
-}
+  //remove password from output
+  user.password = undefined;
+
+  res.status(statusCode).json({
+    status: 'success',
+    token,
+    data: {
+      user
+    }
+  });
+};
 
 exports.signup = catchAsync(async (req, res, next) => {
   const newUser = await User.create({
@@ -38,7 +49,7 @@ exports.signup = catchAsync(async (req, res, next) => {
 
   const token = signToken(newUser._id);
 
-  createSendToken(newUser, 201,res);
+  createSendToken(newUser, 201, res);
 });
 
 exports.login = catchAsync(async (req, res, next) => {
@@ -51,7 +62,9 @@ exports.login = catchAsync(async (req, res, next) => {
 
   // 2) check if user exists and password is correct
   const user = await User.findOne({ email }).select('+password');
-  //console.log(user)
+//   console.log('user',user)
+//   console.log('password',password)
+//   console.log('user.password',user.password)
   const correct = await user.correctPassword(password, user.password);
 
   if (!user || !correct) {
@@ -59,8 +72,7 @@ exports.login = catchAsync(async (req, res, next) => {
   }
 
   // 3) if everything is ok, send token to client
-  createSendToken(user, 200,res);
-
+  createSendToken(user, 200, res);
 });
 
 exports.protect = catchAsync(async (req, res, next) => {
@@ -72,7 +84,7 @@ exports.protect = catchAsync(async (req, res, next) => {
   ) {
     token = req.headers.authorization.split(' ')[1];
   }
-  console.log(token);
+  //console.log(token);
 
   if (!token) {
     return next(
@@ -186,8 +198,7 @@ exports.resetPassword = catchAsync(async (req, res, next) => {
 
   // 4) Log the user in, send JWT
 
-  createSendToken(user, 200,res);
-
+  createSendToken(user, 200, res);
 });
 
 exports.updatePassword = catchAsync(async (req, res, next) => {
@@ -196,7 +207,7 @@ exports.updatePassword = catchAsync(async (req, res, next) => {
 
   // 2) check if POSTed current password is correct
   if (!(await user.correctPassword(req.body.passwordCurrent, user.password))) {
-      return next(new AppError('Your current password is wrong.', 401))
+    return next(new AppError('Your current password is wrong.', 401));
   }
   // 3) if so, update password
   user.password = req.body.password;
@@ -205,5 +216,5 @@ exports.updatePassword = catchAsync(async (req, res, next) => {
   //User.findByIdAndUpdate - cannot use it because you cannot use passwordConfirm validate, and use both userSchema pre middleware that validate password
 
   // 4) log user in, send jwt
-  createSendToken(user, 200,res);
+  createSendToken(user, 200, res);
 });
